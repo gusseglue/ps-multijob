@@ -181,8 +181,10 @@ QBCore.Functions.CreateCallback("ps-multijob:getJobs", function(source, cb)
     local civjobs = {}
     local active = {}
     local getjobs = {}
+    local getcreatorjob = MySQL.query.await("SELECT * FROM job_grades")
     local Players = QBCore.Functions.GetPlayers()
 
+    -- Få antallet af aktive spillere i hver jobkategori
     for i = 1, #Players, 1 do
         local xPlayer = QBCore.Functions.GetPlayer(Players[i])
         active[xPlayer.PlayerData.job.name] = 0
@@ -190,26 +192,65 @@ QBCore.Functions.CreateCallback("ps-multijob:getJobs", function(source, cb)
             active[xPlayer.PlayerData.job.name] = active[xPlayer.PlayerData.job.name] + 1
         end
     end
-
+    
+    -- Loop gennem jobs og match med data fra databasen
     for job, grade in pairs(jobs) do
-        if QBCore.Shared.Jobs[job] == nil then
-            print("The job '" .. job .. "' has been removed and is not present in your QBCore jobs. Remove it from the multijob SQL or add it back to your qbcore jobs.lua.")
-        else
-            local online = active[job] or 0
-            getjobs = {
-                name = job,
-                grade = grade,
-                description = Config.Descriptions[job],
-                icon = Config.FontAwesomeIcons[job],
-                label = QBCore.Shared.Jobs[job].label,
-                gradeLabel = QBCore.Shared.Jobs[job].grades[tostring(grade)].name,
-                salary = QBCore.Shared.Jobs[job].grades[tostring(grade)].payment,
-                active = online,
-            }
-            if Config.WhitelistJobs[job] then
-                whitelistedjobs[#whitelistedjobs+1] = getjobs
+        if Config.jobscreator then
+            local jobLabel = nil
+            local gradeLabel = nil
+            local salary = nil
+
+            -- Søg efter job og grade i database resultaterne
+            for _, row in ipairs(getcreatorjob) do
+                if row.job_name == job then
+                    jobLabel = row.label
+                    gradeLabel = row.name
+                    salary = row.salary
+                    break
+                end
+            end
+
+            -- Hvis jobbet ikke findes i databasen, spring det over
+            if not jobLabel then
+                print("The job '" .. job .. "' with grade '" .. grade .. "' is not present in your job_grades table. Please check your database.")
             else
-                civjobs[#civjobs+1] = getjobs
+                local online = active[job] or 0
+                getjobs = {
+                    name = job,
+                    grade = grade,
+                    description = Config.Descriptions[job],
+                    icon = Config.FontAwesomeIcons[job],
+                    label = jobLabel,
+                    gradeLabel = gradeLabel,
+                    salary = salary,
+                    active = online,
+                }
+                if Config.WhitelistJobs[job] then
+                    whitelistedjobs[#whitelistedjobs+1] = getjobs
+                else
+                    civjobs[#civjobs+1] = getjobs
+                end
+            end
+        else
+            if QBCore.Shared.Jobs[job] == nil then
+                print("The job '" .. job .. "' has been removed and is not present in your QBCore jobs. Remove it from the multijob SQL or add it back to your qbcore jobs.lua.")
+            else
+                local online = active[job] or 0
+                getjobs = {
+                    name = job,
+                    grade = grade,
+                    description = Config.Descriptions[job],
+                    icon = Config.FontAwesomeIcons[job],
+                    label = QBCore.Shared.Jobs[job].label,
+                    gradeLabel = QBCore.Shared.Jobs[job].grades[tostring(grade)].name,
+                    salary = QBCore.Shared.Jobs[job].grades[tostring(grade)].payment,
+                    active = online,
+                }
+                if Config.WhitelistJobs[job] then
+                    whitelistedjobs[#whitelistedjobs+1] = getjobs
+                else
+                    civjobs[#civjobs+1] = getjobs
+                end
             end
         end
     end
@@ -220,6 +261,7 @@ QBCore.Functions.CreateCallback("ps-multijob:getJobs", function(source, cb)
     }
     cb(multijobs)
 end)
+
 
 RegisterNetEvent("ps-multijob:changeJob",function(cjob, cgrade)
     local source = source
